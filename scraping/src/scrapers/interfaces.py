@@ -1,5 +1,7 @@
 from typing import Any, Protocol
 
+from common import ParsedScrap, Scrap, Source
+
 
 class IGetter(Protocol):
     """
@@ -19,13 +21,13 @@ class IGetter(Protocol):
     After getting the sources we might filter them (e.g. by time modified or the regex of the url)
     """
 
-    def fetch_sources(self) -> set[str]:
+    def fetch_sources(self) -> set[Source]:
         """
-        Get the sources
+        Get the sources for the scrap
         """
         ...
 
-    def fetch_scrap(self, sources: set[str]) -> set[str]:
+    def fetch_scrap(self, sources: set[Source]) -> set[Scrap]:
         """
         Get the scrap we want to parse later
         """
@@ -46,25 +48,21 @@ class IParser(Protocol):
 
     def parse_scrap(
         self,
-        scrap: set[str],
-    ) -> set[str]:
+        scrap: set[Scrap],
+    ) -> set[ParsedScrap]:
         """
         Parse the provided files
         """
         ...
 
-    def info_scrap(self, scrap: set[str]) -> Any:
+    def info_scrap(self, scrap: set[Scrap]) -> Any:
         """
         Get some information about the scrap
         """
         ...
 
-    def info_parsed_scrap(self, parsed_scrap: set[str]) -> Any:
+    def info_parsed_scrap(self, parsed_scrap: set[ParsedScrap]) -> Any:
         """
         Get some information about the parsed scrap
         """
         ...
-
-
-class ISaver(Protocol):
-    def save_scrap(self): ...

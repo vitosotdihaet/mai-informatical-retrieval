@@ -1,5 +1,5 @@
 import requests
-from src.exception import ParserException
+from exception import ParserException
 
 
 def get_from_url(url: str) -> str:

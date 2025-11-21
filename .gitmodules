@@ -1,0 +1,3 @@
+[submodule "search-engine/vendor/mongo-c-driver"]
+	path = search-engine/vendor/mongo-c-driver
+	url = git@github.com:mongodb/mongo-c-driver.git
