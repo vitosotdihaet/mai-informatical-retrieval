@@ -35,12 +35,14 @@ class RBCGetter(IGetter):
         type: RBCGetterType,
         from_lastmod: datetime,
         to_lastmod: datetime,
+        article_limit: None | int = None,
         category: None | RBCCategory = None,
     ) -> None:
         self.crawl_delay_secs = crawl_delay_secs
         self.type = type
         self.from_lastmod = from_lastmod
         self.to_lastmod = to_lastmod
+        self.article_limit = article_limit
         self.category = category
         self.now = datetime.now()
         self._start_time = None
@@ -66,6 +68,7 @@ class RBCGetter(IGetter):
 
         sitemap_counter = 0
         article_counter = 0
+        stop = False
 
         for index_entry in sitemap_index_root.findall("sitemap"):
             self.start_timer()
@@ -129,6 +132,12 @@ class RBCGetter(IGetter):
                         article_counter += 1
                         if article_counter % 100 == 0:
                             log.info(f"got {article_counter} articles")
+                        if (
+                            self.article_limit is not None
+                            and article_counter >= self.article_limit
+                        ):
+                            stop = True
+                            break
                     except Exception as e:
                         log.warning(
                             f"could not fetch the source from sitemap entry {e}"
@@ -137,6 +146,8 @@ class RBCGetter(IGetter):
             except Exception as e:
                 log.warning(f"could not fetch sources from the sitemap index entry {e}")
 
+            if stop:
+                break
             self.end_timer()
 
         return articles
