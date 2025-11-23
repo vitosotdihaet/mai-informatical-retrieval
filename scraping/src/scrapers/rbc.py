@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from asyncio import Queue
 import time
 from typing import Any
 import math
@@ -37,6 +38,7 @@ class RBCGetter(IGetter):
         to_lastmod: datetime,
         article_limit: None | int = None,
         category: None | RBCCategory = None,
+        queue: Queue = Queue(),
     ) -> None:
         self.crawl_delay_secs = crawl_delay_secs
         self.type = type
@@ -46,6 +48,7 @@ class RBCGetter(IGetter):
         self.category = category
         self.now = datetime.now()
         self._start_time = None
+        self.queue = queue
 
     def start_timer(self):
         self._start_time = time.monotonic()
@@ -58,7 +61,7 @@ class RBCGetter(IGetter):
         if sleep_time > 0:
             time.sleep(sleep_time)
 
-    def get_articles_from_sitemap_index(self) -> set[Source]:
+    async def get_articles_from_sitemap_index(self) -> set[Source]:
         articles = set()
         sitemap_index = get_response("https://www.rbc.ru/sitemap_index.xml")
         sitemap_index_text = sitemap_index.text.replace(
@@ -126,7 +129,9 @@ class RBCGetter(IGetter):
                         if lastmod < self.from_lastmod or self.to_lastmod < lastmod:
                             continue
 
-                        articles.add(Source(url, lastmod))
+                        article = Source(url, lastmod)
+                        articles.add(article)
+                        await self.queue.put(article)
                         log.debug(f"got article at {url}")
 
                         article_counter += 1
@@ -176,13 +181,13 @@ class RBCGetter(IGetter):
 
         return articles
 
-    def fetch_sources(self) -> set[Source]:
+    async def fetch_sources(self) -> set[Source]:
         if self.type == RBCGetterType.Category:
             if self.category is None:
                 self.category = RBCCategory.All
             return self.get_latest_article_urls_from_category(self.category)
 
-        return self.get_articles_from_sitemap_index()
+        return await self.get_articles_from_sitemap_index()
 
     def fetch_scrap(self, sources: set[Source]) -> set[Scrap]:
         scrap = set()
@@ -208,6 +213,10 @@ class RBCGetter(IGetter):
 
 
 class RBCParser(IParser):
+    def __init__(self, in_queue: Queue, out_queue: Queue = Queue()) -> None:
+        self.in_queue = in_queue
+        self.out_queue = out_queue
+
     def info_scrap(self, scrap: set[Scrap]) -> Any:
         log.info(f"scrap is {len(scrap)} articles long")
 
@@ -251,6 +260,7 @@ class RBCParser(IParser):
         parsed = set()
         failed_count = 0
         counter = 0
+        await self.in_queue.get
         for article_content in scrap:
             try:
                 soup = BeautifulSoup(article_content.value, "html.parser")

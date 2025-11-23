@@ -21,13 +21,13 @@ class IGetter(Protocol):
     After getting the sources we might filter them (e.g. by time modified or the regex of the url)
     """
 
-    def fetch_sources(self) -> set[Source]:
+    async def fetch_sources(self) -> set[Source]:
         """
         Get the sources for the scrap
         """
         ...
 
-    def fetch_scrap(self, sources: set[Source]) -> set[Scrap]:
+    async def fetch_scrap(self, sources: set[Source]) -> set[Scrap]:
         """
         Get the scrap we want to parse later
         """
