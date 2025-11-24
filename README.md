@@ -23,3 +23,24 @@ docker exec -it mongodb mongosh -u root -p example --authenticationDatabase admi
 Для начала скрейпинга можно просто запустить `main.ipynb`, но рекомендуется выставить переменные `GET_FROM` и `GET_TO` для определения временного интервала последнего обновления статей с rbc.ru, чтобы заскрейпить небольшое количество статей.
 
 > Примечание: сейчас скрейпинг происходит без параллелизма - последовательно находятся источники статей, потом их скачивание, парсинг и сохранение. В будущем хочется переписать это все на асинхронный рантайм с асинхронными очередями. 
+
+## Search engine
+
+Для начала нужно инициализировать подмодули:
+```shell
+git submodule update --init --recursive
+```
+
+Потом установить драйвер MongoDB по [этому гайду](https://www.mongodb.com/docs/languages/cpp/cpp-driver/current/get-started/#std-label-cpp-get-started)
+
+Осталось все забилдить:
+```shell
+mkdir build && cd build
+cmake ../search-engine
+make
+```
+
+Запуск:
+```shell
+./search_engine
+```
