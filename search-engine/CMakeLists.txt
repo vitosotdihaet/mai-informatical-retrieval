@@ -18,3 +18,7 @@ pkg_check_modules(MONGOCXX REQUIRED libmongocxx)
 target_include_directories(search_engine PRIVATE ${MONGOCXX_INCLUDE_DIRS})
 target_link_libraries(search_engine PRIVATE ${MONGOCXX_LIBRARIES})
 target_compile_options(search_engine PRIVATE ${MONGOCXX_CFLAGS_OTHER})
+
+enable_testing()
+
+add_subdirectory(tests)
