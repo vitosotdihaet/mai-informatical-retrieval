@@ -91,35 +91,6 @@ TEST(BooleanIndexTest, OrQuery)
     EXPECT_TRUE(result4.empty());
 }
 
-TEST(BooleanIndexTest, AndNotQuery)
-{
-    BooleanIndex<uint32_t> index;
-
-    index.add_document(1, {"apple", "fruit", "red"});
-    index.add_document(2, {"apple", "fruit", "green"});
-    index.add_document(3, {"apple", "pie"});
-    index.add_document(4, {"banana", "fruit"});
-
-    // apple AND NOT fruit
-    auto result1 = index.and_not_query("apple", "fruit");
-    EXPECT_EQ(result1.size(), 1);
-    EXPECT_EQ(result1[0], 3);
-
-    // apple AND NOT pie
-    auto result2 = index.and_not_query("apple", "pie");
-    EXPECT_EQ(result2.size(), 2);
-    EXPECT_TRUE(std::find(result2.begin(), result2.end(), 1) != result2.end());
-    EXPECT_TRUE(std::find(result2.begin(), result2.end(), 2) != result2.end());
-
-    // Non-existent first term
-    auto result3 = index.and_not_query("nonexistent", "apple");
-    EXPECT_TRUE(result3.empty());
-
-    // Non-existent second term
-    auto result4 = index.and_not_query("apple", "nonexistent");
-    EXPECT_EQ(result4.size(), 3); // all apple docs
-}
-
 TEST(BooleanIndexTest, RemoveDocument)
 {
     BooleanIndex<uint32_t> index;
@@ -197,7 +168,6 @@ TEST(BooleanIndexTest, EmptyIndex)
     // Queries on empty index
     EXPECT_TRUE(index.and_query({"test"}).empty());
     EXPECT_TRUE(index.or_query({"test"}).empty());
-    EXPECT_TRUE(index.and_not_query("a", "b").empty());
 }
 
 // TEST(BooleanIndexTest, DuplicateDocumentId)

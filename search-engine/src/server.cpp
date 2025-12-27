@@ -29,7 +29,7 @@ void signal_handler(int signal)
     stop_flag = 1;
 }
 
-MinimalAsyncServer::MinimalAsyncServer(int port, int64_t max_response_count) : port_(port), max_response_count_(max_response_count), server_fd_(-1), max_fd_(0)
+MinimalAsyncServer::MinimalAsyncServer(int port, int64_t max_response_count, boolean_index::BooleanIndex<std::string> &index) : port_(port), max_response_count_(max_response_count), index_(index), server_fd_(-1), max_fd_(0)
 {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
@@ -96,7 +96,7 @@ bool MinimalAsyncServer::start()
 /// @brief generate a response for the client request
 /// @param client_fd: fd of the client
 /// @return boolean: true if client is still alive, false if it was closed
-bool MinimalAsyncServer::handleClientData(int client_fd)
+bool MinimalAsyncServer::handle_client_data(int client_fd)
 {
     unsigned char buffer[SEARCH_ENGINE_SERVER_BUFFER_SIZE];
     ssize_t bytes_read = recv(client_fd, buffer, SEARCH_ENGINE_SERVER_BUFFER_SIZE, 0);
@@ -104,7 +104,7 @@ bool MinimalAsyncServer::handleClientData(int client_fd)
     if (bytes_read <= 0)
     {
         spdlog::info("client {} disconnected", client_fd);
-        closeClient(client_fd);
+        close_client(client_fd);
         return false;
     }
 
@@ -121,12 +121,12 @@ bool MinimalAsyncServer::handleClientData(int client_fd)
         size_t bytes_read = recv(client_fd, buffer, SEARCH_ENGINE_SERVER_BUFFER_SIZE, 0);
     } while (bytes_read == SEARCH_ENGINE_SERVER_BUFFER_SIZE);
 
-    handleRequest(client_fd, request);
+    handle_request(client_fd, request);
 
     return true;
 }
 
-void MinimalAsyncServer::handleRequest(int client_fd, std::vector<unsigned char> request)
+void MinimalAsyncServer::handle_request(int client_fd, std::vector<unsigned char> request)
 {
     std::string s = std::string(request.begin(), request.end());
     s.erase(s.begin(), std::find_if_not(s.begin(), s.end(), ::isspace));
@@ -137,37 +137,30 @@ void MinimalAsyncServer::handleRequest(int client_fd, std::vector<unsigned char>
     using bsoncxx::builder::basic::kvp;
     using bsoncxx::builder::basic::make_document;
 
-    auto filter = make_document(
-        kvp("value", make_document(
-                         kvp("$regex", s),
-                         kvp("$options", "i") // case-insensitive
-                         )));
-
-    auto cursor = collection.find(filter.view());
+    auto result = index_.and_query(tokenize_and_stem(s));
 
     std::string response;
     response.reserve(1024);
     int64_t response_count = 0;
-    for (auto &&doc : cursor)
+    for (auto &doc : result)
     {
         if (response_count >= max_response_count_)
         {
             break;
         }
 
-        std::string json_doc = bsoncxx::to_json(doc);
-
         std::string partial_printing;
         partial_printing.reserve(100);
 
-        for (size_t i = 0; i < json_doc.size(); i++)
+        for (size_t i = 0; i < doc.size(); i++)
         {
             if (i < 100)
             {
-                partial_printing.push_back(json_doc[i]);
+                partial_printing.push_back(doc[i]);
             }
-            response.push_back(json_doc[i]);
+            response.push_back(doc[i]);
         }
+        response.push_back('\n');
         spdlog::info("{}", partial_printing);
         response_count++;
     }
@@ -175,7 +168,7 @@ void MinimalAsyncServer::handleRequest(int client_fd, std::vector<unsigned char>
     send(client_fd, static_cast<const void *>(response.data()), response.size(), 0);
 }
 
-void MinimalAsyncServer::closeClient(int client_fd)
+void MinimalAsyncServer::close_client(int client_fd)
 {
     close(client_fd);
     FD_CLR(client_fd, &master_fds_);
@@ -198,7 +191,7 @@ void MinimalAsyncServer::closeClient(int client_fd)
     }
 }
 
-void MinimalAsyncServer::acceptNewClient()
+void MinimalAsyncServer::accept_new_client()
 {
     sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
@@ -254,7 +247,7 @@ void MinimalAsyncServer::run()
 
         if (FD_ISSET(server_fd_, &read_fds))
         {
-            acceptNewClient();
+            accept_new_client();
         }
 
         for (size_t i = 0; i < client_fds_.size();)
@@ -262,7 +255,7 @@ void MinimalAsyncServer::run()
             int client_fd = client_fds_[i];
             if (FD_ISSET(client_fd, &read_fds))
             {
-                if (handleClientData(client_fd))
+                if (handle_client_data(client_fd))
                 {
                     i++;
                 }

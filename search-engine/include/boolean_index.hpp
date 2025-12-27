@@ -5,8 +5,10 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+
 #include "skiplist.hpp"
 #include "hashmap.hpp"
+#include "log.hpp"
 
 namespace boolean_index
 {
@@ -21,9 +23,11 @@ namespace boolean_index
         HashMapType index_;
         SkipListType all_documents_;
         std::size_t total_documents_;
+        std::size_t max_responses_;
 
     public:
-        BooleanIndex() : total_documents_(0) {}
+        BooleanIndex() : total_documents_(0), max_responses_(0) {}
+        BooleanIndex(std::size_t max_responses) : max_responses_(max_responses) {}
 
         // Add a document with terms
         void add_document(DocId doc_id, const std::vector<std::string> &terms)
@@ -55,7 +59,7 @@ namespace boolean_index
         {
             if (!all_documents_.search(doc_id))
             {
-                return false; // Document not in index
+                return false;
             }
 
             for (const auto &term : terms)
@@ -80,7 +84,7 @@ namespace boolean_index
         {
             if (terms.empty())
             {
-                return {}; // Empty result for empty query
+                return {};
             }
 
             // Find the smallest posting list to intersect with others
@@ -130,6 +134,10 @@ namespace boolean_index
                 if (in_all)
                 {
                     result.push_back(doc_id);
+                    if (max_responses_ != 0 && result.size() >= max_responses_)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -160,6 +168,10 @@ namespace boolean_index
                 for (const auto &doc_id : *skip_list)
                 {
                     union_result.insert(doc_id);
+                    if (max_responses_ != 0 && union_result.size() >= max_responses_)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -168,46 +180,6 @@ namespace boolean_index
             for (const auto &doc_id : union_result)
             {
                 result.push_back(doc_id);
-            }
-
-            return result;
-        }
-
-        // Get documents containing term1 AND NOT term2 (difference)
-        std::vector<DocId> and_not_query(const std::string &term1, const std::string &term2) const
-        {
-            const auto *list1_ptr = index_.find(term1);
-            const auto *list2_ptr = index_.find(term2);
-
-            if (list1_ptr == nullptr)
-            {
-                return {}; // term1 doesn't exist
-            }
-
-            if (list2_ptr == nullptr)
-            {
-                // term2 doesn't exist, so just return all documents with term1
-                std::vector<DocId> result;
-                const auto *list1 = list1_ptr->get();
-                for (const auto &doc_id : *list1)
-                {
-                    result.push_back(doc_id);
-                }
-                return result;
-            }
-
-            // List1 - List2
-            const auto *list1 = list1_ptr->get();
-            const auto *list2 = list2_ptr->get();
-
-            std::vector<DocId> result;
-
-            for (const auto &doc_id : *list1)
-            {
-                if (!list2->search(doc_id))
-                {
-                    result.push_back(doc_id);
-                }
             }
 
             return result;
@@ -297,8 +269,7 @@ namespace boolean_index
             std::cout << "  Memory usage (estimated):\n";
 
             // Estimate memory usage
-            std::size_t hashmap_memory = index_.size() * sizeof(std::string) +
-                                         index_.bucket_count() * sizeof(void *);
+            std::size_t hashmap_memory = index_.size() * sizeof(DocId) + index_.bucket_count() * sizeof(void *);
 
             std::size_t skiplist_memory = 0;
             std::size_t max_list_size = 0;
@@ -308,7 +279,7 @@ namespace boolean_index
             for (const auto &kv : index_)
             {
                 std::size_t list_size = kv.second->size();
-                skiplist_memory += list_size * sizeof(DocId) * 2; // Rough estimate
+                skiplist_memory += list_size * sizeof(DocId) * 2;
 
                 if (list_size > max_list_size)
                 {
@@ -335,8 +306,9 @@ namespace boolean_index
         // Print the entire index (for debugging)
         void print_index() const
         {
-            std::cout << "=== Boolean Index Contents ===\n";
+            std::cout << "Boolean Index Contents (first 10)\n";
 
+            size_t counter = 0;
             for (const auto &kv : index_)
             {
                 const auto &term = kv.first;
@@ -357,6 +329,11 @@ namespace boolean_index
                     count++;
                 }
                 std::cout << "\n";
+                counter++;
+                if (counter >= 10)
+                {
+                    break;
+                }
             }
 
             std::cout << "\nTotal: " << index_.size() << " terms, "

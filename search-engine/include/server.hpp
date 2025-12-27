@@ -13,6 +13,8 @@
 #include <csignal>
 #include <spdlog/spdlog.h>
 
+#include "boolean_index.hpp"
+
 class MinimalAsyncServer
 {
 private:
@@ -21,11 +23,12 @@ private:
     fd_set master_fds_;
     int max_fd_;
     std::vector<int> client_fds_;
+    boolean_index::BooleanIndex<std::string> &index_;
 
     int64_t max_response_count_;
 
 public:
-    MinimalAsyncServer(int port, int64_t max_response_count);
+    MinimalAsyncServer(int port, int64_t max_response_count, boolean_index::BooleanIndex<std::string> &index);
     ~MinimalAsyncServer();
 
     bool start();
@@ -33,13 +36,13 @@ public:
     /// @brief generate a response for the client request
     /// @param client_fd: fd of the client
     /// @return boolean: true if client is still alive, false if it was closed
-    bool handleClientData(int client_fd);
+    bool handle_client_data(int client_fd);
 
-    void handleRequest(int client_fd, std::vector<unsigned char> request);
+    void handle_request(int client_fd, std::vector<unsigned char> request);
 
-    void closeClient(int client_fd);
+    void close_client(int client_fd);
 
-    void acceptNewClient();
+    void accept_new_client();
 
     void run();
 

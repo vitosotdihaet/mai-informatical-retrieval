@@ -28,6 +28,7 @@ namespace skiplist
     {
     private:
         std::shared_ptr<SkipListNode<T>> header_;
+        size_t count_;
         int max_level_;
         int current_level_;
         float probability_;
@@ -48,10 +49,9 @@ namespace skiplist
 
     public:
         SkipList(int max_level = 16, float prob = 0.5)
-            : max_level_(max_level), current_level_(0), probability_(prob),
+            : count_(0), max_level_(max_level), current_level_(0), probability_(prob),
               generator_(std::random_device{}()), distribution_(0.0f, 1.0f)
         {
-
             T min_value = std::numeric_limits<T>::lowest();
             header_ = std::make_shared<SkipListNode<T>>(min_value, max_level_);
         }
@@ -96,6 +96,8 @@ namespace skiplist
                 new_node->forward[i] = update[i]->forward[i];
                 update[i]->forward[i] = new_node;
             }
+
+            count_++;
 
             return true;
         }
@@ -150,6 +152,8 @@ namespace skiplist
                     current_level_--;
                 }
 
+                count_--;
+
                 return true;
             }
 
@@ -192,14 +196,7 @@ namespace skiplist
 
         size_t size() const
         {
-            size_t count = 0;
-            auto current = header_->forward[0];
-            while (current != nullptr)
-            {
-                count++;
-                current = current->forward[0];
-            }
-            return count;
+            return count_;
         }
 
         void print() const
