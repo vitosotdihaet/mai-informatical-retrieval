@@ -137,7 +137,13 @@ void MinimalAsyncServer::handle_request(int client_fd, std::vector<unsigned char
     using bsoncxx::builder::basic::kvp;
     using bsoncxx::builder::basic::make_document;
 
+    using clock = std::chrono::high_resolution_clock;
+
+    auto start = clock::now();
     auto result = index_.and_query(tokenize_and_stem(s));
+    auto end = clock::now();
+
+    spdlog::info("search took {}μs", std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
     std::string response;
     response.reserve(1024);

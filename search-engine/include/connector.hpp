@@ -89,7 +89,7 @@ bool setup_boolean_index(boolean_index::BooleanIndex<DocId> &index, mongocxx::co
             }
         }
 
-        spdlog::info("built index in {}ms", std::chrono::duration_cast<std::chrono::milliseconds>(time_to_build_index).count());
+        spdlog::info("built index in {}s", std::chrono::duration_cast<std::chrono::seconds>(time_to_build_index).count());
     }
     catch (const std::exception &e)
     {
