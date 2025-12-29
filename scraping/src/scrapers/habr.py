@@ -54,7 +54,6 @@ class HabrGetter(IGetter):
             self.start_timer()
 
             try:
-                log.debug(f"sitemap_entry = {sitemap_entry}")
                 loc_elem = sitemap_entry.find("loc")
                 if loc_elem is None or not loc_elem.text:
                     continue
@@ -74,6 +73,7 @@ class HabrGetter(IGetter):
                 sitemap_xml = get_response(sitemap_url).text.replace(
                     ' xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"', ""
                 )
+                log.debug(f"got sitemap at {sitemap_url}")
                 sitemap_root = ET.fromstring(sitemap_xml)
 
                 sitemap_counter += 1
@@ -91,7 +91,10 @@ class HabrGetter(IGetter):
                         url_entry.find("lastmod"), self.now
                     ).replace(tzinfo=ZoneInfo("Europe/Moscow"))
 
-                    if not (self.from_lastmod <= article_lastmod <= self.to_lastmod):
+                    if (
+                        article_lastmod < self.from_lastmod
+                        or self.to_lastmod < article_lastmod
+                    ):
                         continue
 
                     articles.add(Source(article_url, article_lastmod))
@@ -175,44 +178,59 @@ class HabrParser(IParser):
         scrap: set[Scrap],
     ) -> set[ParsedScrap]:
         """
-        Parse an article content into plain text
+        Parse Habr article HTML into plain text
         """
-        parsed = set()
+        parsed: set[ParsedScrap] = set()
         failed_count = 0
         counter = 0
+
         for article_content in scrap:
             try:
                 soup = BeautifulSoup(article_content.value, "html.parser")
 
-                content_container = soup.find("div", class_="article__text")
+                content_container = (
+                    soup.find("div", class_="article-body")
+                    or soup.find("div", attrs={"data-article-content": True})
+                    or soup.find("div", id="post-content-body")
+                )
+
+                title = "No title"
+                title_el = soup.find("h1")
+                if title_el:
+                    title = title_el.get_text(strip=True)
+
                 if not content_container:
-                    raise ParserException("Could not find article text")
+                    raise ParserException("Could not find article content container")
 
-                title_element = soup.find("h1")
-                title = (
-                    title_element.get_text(strip=True) if title_element else "No title"
+                blocks = content_container.find_all(
+                    ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre"]
                 )
 
-                article_text = " ".join(
-                    [
-                        " ".join(
-                            element.get_text()
-                            .strip(" \n")
-                            .replace("\xa0", " ")
-                            .replace("\n", " ")
-                            .split()
-                        )
-                        for element in content_container.find_all(  # type: ignore
-                            ["h1", "h2", "h3", "h4", "h5", "h6", "p"]
-                        )
-                    ]
-                )
+                parts: list[str] = []
+
+                for block in blocks:
+                    text = (
+                        block.get_text(separator=" ")
+                        .replace("\xa0", " ")
+                        .replace("\n", " ")
+                        .strip()
+                    )
+
+                    if not text:
+                        continue
+
+                    # normalize whitespace
+                    text = " ".join(text.split())
+                    parts.append(text)
+
+                article_text = " ".join(parts)
 
                 parsed.add(
                     ParsedScrap(article_content.source, f"{title} - {article_text}")
                 )
+
             except Exception as e:
-                log.debug(f"failed to parse article: {e}")
+                log.debug(f"failed to parse habr article: {e}")
                 failed_count += 1
                 parsed.add(ParsedScrap(article_content.source, None))
 
@@ -221,5 +239,4 @@ class HabrParser(IParser):
                 log.info(f"parsed {counter} articles")
 
         log.warning(f"failed to parse {failed_count}/{len(scrap)} articles")
-
         return parsed
