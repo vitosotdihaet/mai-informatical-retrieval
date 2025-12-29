@@ -2,19 +2,16 @@ from typing import Any
 from pymongo import MongoClient
 from pymongo.errors import BulkWriteError
 from common import ParsedScrap
+
+from config.config import MongoDBConfig
 from log import log
 
 
 class MongoSaver:
-    def __init__(
-        self,
-        uri: str = "mongodb://root:example@localhost:27017",
-        db_name: str = "scraper",
-        collection_name: str = "scraps",
-    ) -> None:
-        self.client = MongoClient(uri)
-        self.db = self.client[db_name]
-        self.collection = self.db[collection_name]
+    def __init__(self, settings: MongoDBConfig) -> None:
+        self.client = MongoClient(settings.uri)
+        self.db = self.client[settings.db]
+        self.collection = self.db[settings.collection]
         self.collection.create_index("source", unique=True)
 
     def save_parsed_scrap(self, parsed_scrap: set[ParsedScrap]) -> None:

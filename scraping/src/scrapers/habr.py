@@ -1,5 +1,4 @@
 from datetime import datetime
-from enum import Enum
 import time
 from typing import Any
 import math
@@ -16,20 +15,7 @@ from scrapers.utils import get_from_url, get_response, parse_lastmod
 from log import log
 
 
-class RBCCategory(Enum):
-    All = "all"
-    Invest = "Invest"
-
-    def __str__(self) -> str:
-        return self.value
-
-
-class RBCGetterType(Enum):
-    Category = 0
-    Sitemap = 1
-
-
-class RBCGetter(IGetter):
+class HabrGetter(IGetter):
     def __init__(
         self,
         settings: SiteConfig,
@@ -40,16 +26,6 @@ class RBCGetter(IGetter):
         self.article_limit = settings.doc_limit
         self.now = datetime.now()
         self._start_time = None
-        self.type = RBCGetterType.Sitemap
-        self.category = None
-
-    def set_category(self, category: RBCCategory):
-        self.type = RBCGetterType.Category
-        self.category = category
-
-    def unset_category(self):
-        self.type = RBCGetterType.Sitemap
-        self.category = None
 
     def start_timer(self):
         self._start_time = time.monotonic()
@@ -63,111 +39,78 @@ class RBCGetter(IGetter):
             time.sleep(sleep_time)
 
     def get_articles_from_sitemap_index(self) -> set[Source]:
-        articles = set()
-        sitemap_index = get_response("https://www.rbc.ru/sitemap_index.xml")
-        sitemap_index_text = sitemap_index.text.replace(
+        articles: set[Source] = set()
+
+        index_resp = get_response("https://habr.com/sitemap.xml")
+        index_xml = index_resp.text.replace(
             ' xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"', ""
         )
-        sitemap_index_root = ET.fromstring(sitemap_index_text)
+        index_root = ET.fromstring(index_xml)
 
         sitemap_counter = 0
         article_counter = 0
 
-        for index_entry in sitemap_index_root.findall("sitemap"):
+        for sitemap_entry in index_root.findall("sitemap"):
             self.start_timer()
 
             try:
-                loc = index_entry.find("loc")
-                if loc is None or loc.text is None:
+                log.debug(f"sitemap_entry = {sitemap_entry}")
+                loc_elem = sitemap_entry.find("loc")
+                if loc_elem is None or not loc_elem.text:
                     continue
 
-                loc = loc.text
+                sitemap_url = loc_elem.text
 
-                lastmod = parse_lastmod(index_entry.find("lastmod"), self.now).replace(
-                    tzinfo=ZoneInfo("Europe/Moscow")
-                )
+                lastmod = parse_lastmod(
+                    sitemap_entry.find("lastmod"), self.now
+                ).replace(tzinfo=ZoneInfo("Europe/Moscow"))
 
                 if lastmod < self.from_lastmod:
                     continue
 
-                sitemap = get_response(loc).text.replace(
+                if "articles" not in sitemap_url:
+                    continue
+
+                sitemap_xml = get_response(sitemap_url).text.replace(
                     ' xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"', ""
                 )
-                log.debug(f"got sitemap at {loc}")
-                sitemap_root = ET.fromstring(sitemap)
+                sitemap_root = ET.fromstring(sitemap_xml)
 
                 sitemap_counter += 1
                 if sitemap_counter % 10 == 0:
-                    log.info(f"got {sitemap_counter} sitemaps")
+                    log.info(f"processed {sitemap_counter} sitemaps")
 
-                for article_entry in sitemap_root.findall("url"):
-                    try:
-                        url = article_entry.find("loc")
-                        if url is None or url.text is None:
-                            continue
-
-                        url = url.text
-
-                        lastmod = parse_lastmod(
-                            article_entry.find("lastmod"), self.now
-                        ).replace(tzinfo=ZoneInfo("Europe/Moscow"))
-
-                        if lastmod < self.from_lastmod or self.to_lastmod < lastmod:
-                            continue
-
-                        articles.add(Source(url, lastmod))
-                        log.debug(f"got article at {url}")
-
-                        article_counter += 1
-                        if article_counter % 100 == 0:
-                            log.info(f"got {article_counter} articles")
-                        if (
-                            self.article_limit is not None
-                            and article_counter >= self.article_limit
-                        ):
-                            return articles
-                    except Exception as e:
-                        log.warning(
-                            f"could not fetch the source from sitemap entry {e}"
-                        )
+                for url_entry in sitemap_root.findall("url"):
+                    loc = url_entry.find("loc")
+                    if loc is None or not loc.text:
                         continue
+
+                    article_url = loc.text
+
+                    article_lastmod = parse_lastmod(
+                        url_entry.find("lastmod"), self.now
+                    ).replace(tzinfo=ZoneInfo("Europe/Moscow"))
+
+                    if not (self.from_lastmod <= article_lastmod <= self.to_lastmod):
+                        continue
+
+                    articles.add(Source(article_url, article_lastmod))
+
+                    article_counter += 1
+                    if article_counter % 100 == 0:
+                        log.info(f"got {article_counter} articles")
+
+                    if self.article_limit and article_counter >= self.article_limit:
+                        return articles
+
             except Exception as e:
-                log.warning(f"could not fetch sources from the sitemap index entry {e}")
+                log.warning(f"failed sitemap {e}")
 
             self.end_timer()
 
         return articles
 
-    def get_latest_article_urls_from_category(
-        self, category: RBCCategory
-    ) -> set[Source]:
-        """
-        Get latest urls of the articles for the provided category
-        """
-        source_category = f"https://www.rbc.ru/quote/category/{category}/"
-        log.info(f"source category is {source_category}")
-
-        try:
-            category_content = get_from_url(source_category)
-        except Exception as e:
-            log.error(f"could not get article from category: {e}")
-            return set()
-        soup = BeautifulSoup(category_content, "html.parser")
-
-        articles = set()
-
-        for article in soup.find_all("a", class_="q-item__link"):
-            log.info(f"fetched link {article} from category {source_category}")
-            articles.add(Source(article["href"]))  # type: ignore
-
-        return articles
-
     def fetch_sources(self) -> set[Source]:
-        if self.type == RBCGetterType.Category:
-            if self.category is None:
-                self.category = RBCCategory.All
-            return self.get_latest_article_urls_from_category(self.category)
-
         return self.get_articles_from_sitemap_index()
 
     def fetch_scrap(self, sources: set[Source]) -> set[Scrap]:
@@ -193,7 +136,7 @@ class RBCGetter(IGetter):
         time.sleep(self.crawl_delay_secs)
 
 
-class RBCParser(IParser):
+class HabrParser(IParser):
     def info_scrap(self, scrap: set[Scrap]) -> Any:
         log.info(f"scrap is {len(scrap)} articles long")
 
