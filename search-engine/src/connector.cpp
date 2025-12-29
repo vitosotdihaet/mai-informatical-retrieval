@@ -109,15 +109,17 @@ std::vector<std::string> tokenize_and_stem(const std::string &text)
         if (token.empty())
             return;
 
-        sb_stemmer *stemmer =
-            is_russian_token(token) ? RU_STEMMER : EN_STEMMER;
+        sb_stemmer *stemmer = is_russian_token(token) ? RU_STEMMER : EN_STEMMER;
 
         const sb_symbol *stemmed = sb_stemmer_stem(stemmer, reinterpret_cast<const sb_symbol *>(token.data()), static_cast<int>(token.size()));
 
         if (stemmed)
         {
             int len = sb_stemmer_length(stemmer);
-            terms.emplace_back(reinterpret_cast<const char *>(stemmed), len);
+            if (len > 2)
+            {
+                terms.emplace_back(reinterpret_cast<const char *>(stemmed), len);
+            }
         }
 
         token.clear();
